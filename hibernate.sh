@@ -47,8 +47,11 @@ fi
 # ensure Limine configuration is present
 [[ -f /boot/EFI/limine/limine.conf ]] || fatal "/boot/EFI/limine/limine.conf not found; Limine config is required."
 
-# verify the root filesystem is Btrfs
-[[ $(findmnt -no FSTYPE /) == "btrfs" ]] || fatal "Root filesystem is not Btrfs."
+# verify the root filesystem is Btrfs (this script only supports Btrfs)
+ROOT_FSTYPE=$(findmnt -no FSTYPE /)
+if [[ "$ROOT_FSTYPE" != "btrfs" ]]; then
+  fatal "Root filesystem is $ROOT_FSTYPE, but this script only supports Btrfs filesystems. For other filesystems, you need a different hibernation setup approach with resume_offset configuration."
+fi
 
 # refuse to proceed if targets already exist
 [[ ! -e "$SUBVOL_PATH" ]] || fatal "$SUBVOL_PATH already exists."

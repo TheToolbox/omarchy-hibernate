@@ -12,6 +12,12 @@ The script performs the following actions:
 - Ensures the `resume` hook is present in the `mkinitcpio` configuration.
 - Refreshes the initramfs using `limine-update`.
 
+## ⚠️ **Important: Btrfs-Only Support**
+
+**This script is designed exclusively for Btrfs filesystems and will NOT work with other filesystems (ext4, XFS, etc.).** It is intended specifically for Omarchy installations (as of August 29, 2025), which use Btrfs by default. The script uses Btrfs-native swapfile creation (`btrfs filesystem mkswapfile`) and does not require or support the `resume_offset` parameter needed by traditional filesystems.
+
+If you are not using Btrfs, this script will fail during the filesystem check and you will need a different hibernation setup approach.
+
 ## Requirements
 
 - **System:** An Omarchy installation.
