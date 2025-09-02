@@ -39,6 +39,19 @@ If you are not using Btrfs, this script will fail during the filesystem check an
   DRY_RUN=1 ./hibernate.sh
   ```
 
+- **Updating the swapfile:**
+  If you change the amount of RAM in your system, you will need to recreate the swapfile. You can do this with the `--update` flag:
+  ```bash
+  sudo ./hibernate.sh --update
+  ```
+
+- **Getting help:**
+  To see the available commands, use the `--help` flag:
+  ```bash
+  ./hibernate.sh --help
+  ```
+
+
 ## Notes
 
 - The script will not run if `/swap` or `/swap/swapfile` already exist.
