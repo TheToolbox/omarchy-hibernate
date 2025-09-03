@@ -1,6 +1,6 @@
 # Hibernation Setup Script for Omarchy (Btrfs + Limine)
 
-This script automates the setup of hibernation on an Omarchy installation with a Btrfs root filesystem and the Limine bootloader.
+This script automates the complete setup of hibernation on an Omarchy installation with a Btrfs root filesystem and the Limine bootloader.
 
 ## Overview
 
@@ -10,11 +10,13 @@ The script performs the following actions:
 - Creates a swapfile within the subvolume, sized to match the system's total RAM.
 - Adds a corresponding low-priority swap entry to `/etc/fstab`.
 - Ensures the `resume` hook is present in the `mkinitcpio` configuration.
-- Refreshes the initramfs using `limine-update`.
+- **Calculates the swap file's physical offset and configures kernel resume parameters**.
+- **Updates `/etc/default/limine` with `resume` and `resume_offset` parameters**.
+- Refreshes the initramfs and bootloader configuration using `limine-update`.
 
 ## ⚠️ **Important: Btrfs-Only Support**
 
-**This script is designed exclusively for Btrfs filesystems and will NOT work with other filesystems (ext4, XFS, etc.).** It is intended specifically for Omarchy installations (as of August 29, 2025), which use Btrfs by default. The script uses Btrfs-native swapfile creation (`btrfs filesystem mkswapfile`) and does not require or support the `resume_offset` parameter needed by traditional filesystems.
+**This script is designed exclusively for Btrfs filesystems and will NOT work with other filesystems (ext4, XFS, etc.).** It is intended specifically for Omarchy installations (as of August 29, 2025), which use Btrfs by default. The script uses Btrfs-native swapfile creation (`btrfs filesystem mkswapfile`) and automatically calculates the required `resume_offset` parameter for proper hibernation support.
 
 If you are not using Btrfs, this script will fail during the filesystem check and you will need a different hibernation setup approach.
 
@@ -22,10 +24,12 @@ If you are not using Btrfs, this script will fail during the filesystem check an
 
 - **System:** An Omarchy installation.
 - **Filesystem:** A Btrfs root filesystem.
-- **Bootloader:** Limine bootloader installed and configured (`/boot/EFI/limine/limine.conf` must be present).
+- **Bootloader:** Limine bootloader installed and configured:
+  - `/boot/EFI/limine/limine.conf` must be present
+  - `/etc/default/limine` must be present for kernel cmdline configuration
 - **Systemd:** The `systemd-hibernate-resume-generator` must be available.
 - **mkinitcpio:** The `omarchy_hooks.conf` file must be present at `/etc/mkinitcpio.conf.d/omarchy_hooks.conf`.
-- **Tools:** `btrfs-progs` (with `filesystem mkswapfile`), `sed`, `numfmt`, and `limine-update` must be installed.
+- **Tools:** `btrfs-progs` (with `filesystem mkswapfile`), `filefrag`, `sed`, `numfmt`, and `limine-update` must be installed.
 
 ## Usage
 
