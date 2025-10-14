@@ -257,4 +257,15 @@ else
 fi
 
 log "Hibernation setup complete!"
-log "Test hibernation with: systemctl hibernate"
+log ""
+log "Next steps:"
+log "1. Add hibernate to Omarchy menu:"
+log "   ./add-hibernate-to-menu.sh"
+log ""
+log "2. (Optional) Configure automatic hibernation:"
+log "   sudo ./configure-auto-hibernate.sh"
+log ""
+log "3. (Optional) Configure power button to hibernate:"
+log "   sudo ./configure-power-button-hibernate.sh"
+log ""
+log "Then open the System menu and select Hibernate to test"
