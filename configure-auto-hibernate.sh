@@ -43,8 +43,29 @@ log "Configuring hibernation on low battery (<5%)"
 BATTERY_SCRIPT="/usr/local/bin/battery-hibernate-monitor"
 BATTERY_SERVICE="/etc/systemd/system/battery-hibernate-monitor.service"
 
-# Create battery monitoring script
-cat > "$BATTERY_SCRIPT" <<'EOF'
+# Auto-detect battery device
+log "Auto-detecting battery device"
+BATTERY_DEVICE=""
+
+# Use upower to enumerate battery devices and find one with a valid native-path
+for bat in $(upower -e | grep battery); do
+  NATIVE_PATH=$(upower -i "$bat" 2>/dev/null | grep "native-path:" | awk '{print $2}')
+  if [[ -n "$NATIVE_PATH" ]] && [[ "$NATIVE_PATH" != "(null)" ]]; then
+    BATTERY_DEVICE="$bat"
+    log "Found battery device: $BATTERY_DEVICE (native: $NATIVE_PATH)"
+    break
+  fi
+done
+
+if [[ -z "$BATTERY_DEVICE" ]]; then
+  log "Warning: No battery device found. Low battery hibernation will be disabled."
+  log "This is normal for desktop systems without a battery."
+  BATTERY_DEVICE="/org/freedesktop/UPower/devices/battery_BAT1"
+  log "Using fallback path (may be inactive): $BATTERY_DEVICE"
+fi
+
+# Create battery monitoring script with detected device
+cat > "$BATTERY_SCRIPT" <<EOF
 #!/usr/bin/env bash
 # Monitor battery and hibernate when it drops below 5%
 
@@ -52,28 +73,27 @@ set -euo pipefail
 
 THRESHOLD=5
 CHECK_INTERVAL=60  # Check every 60 seconds
+BATTERY_PATH="$BATTERY_DEVICE"
 
 while true; do
   # Get battery percentage
-  BATTERY_PATH="/org/freedesktop/UPower/devices/battery_BAT1"
-
-  if ! PERCENTAGE=$(upower -i "$BATTERY_PATH" 2>/dev/null | grep -E "percentage:" | awk '{print $2}' | tr -d '%'); then
+  if ! PERCENTAGE=\$(upower -i "\$BATTERY_PATH" 2>/dev/null | grep -E "percentage:" | awk '{print \$2}' | tr -d '%'); then
     # If battery info unavailable, wait and retry
-    sleep "$CHECK_INTERVAL"
+    sleep "\$CHECK_INTERVAL"
     continue
   fi
 
   # Check if on AC power
-  ON_AC=$(upower -i "$BATTERY_PATH" 2>/dev/null | grep -E "state:" | awk '{print $2}')
+  ON_AC=\$(upower -i "\$BATTERY_PATH" 2>/dev/null | grep -E "state:" | awk '{print \$2}')
 
   # Only hibernate if discharging and below threshold
-  if [[ "$ON_AC" == "discharging" ]] && [[ -n "$PERCENTAGE" ]] && (( $(echo "$PERCENTAGE < $THRESHOLD" | bc -l) )); then
-    logger -t battery-hibernate "Battery at ${PERCENTAGE}%, hibernating now"
+  if [[ "\$ON_AC" == "discharging" ]] && [[ -n "\$PERCENTAGE" ]] && (( \$(echo "\$PERCENTAGE < \$THRESHOLD" | bc -l) )); then
+    logger -t battery-hibernate "Battery at \${PERCENTAGE}%, hibernating now"
     systemctl hibernate
     exit 0
   fi
 
-  sleep "$CHECK_INTERVAL"
+  sleep "\$CHECK_INTERVAL"
 done
 EOF
 

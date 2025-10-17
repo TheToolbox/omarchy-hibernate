@@ -62,6 +62,44 @@ If you are not using Btrfs, this script will fail during the filesystem check an
 - The script will abort if any non-zram swap is already active.
 - The script creates timestamped backups of `/etc/fstab` and the mkinitcpio hooks file before modifying them.
 
+## Post-Installation: Adding Hibernate to Menu
+
+After running the main hibernation setup, you'll want to add a hibernate option to your Omarchy system menu:
+
+```bash
+./add-hibernate-to-menu.sh
+```
+
+This script:
+- Adds a "Hibernate" option to the Omarchy system menu
+- Places it after "Suspend" in the menu
+- Creates a backup of the menu file before making changes
+
+After running this, you can access hibernate from the System menu in Omarchy.
+
+## Optional: Automatic Hibernation
+
+To configure automatic hibernation triggers:
+
+```bash
+sudo ./configure-auto-hibernate.sh
+```
+
+This configures:
+- **Suspend-then-hibernate**: After being suspended for 30 minutes, the system will hibernate
+- **Low battery hibernation**: When battery drops below 5%, the system will hibernate automatically
+- **Idle suspend**: After 10 minutes of inactivity, suspend (then hibernate after 30min)
+
+## Optional: Power Button Hibernation
+
+To configure the power button to trigger hibernation:
+
+```bash
+sudo ./configure-power-button-hibernate.sh
+```
+
+After running this, pressing the power button (briefly) will hibernate the system instead of being ignored.
+
 ## Testing Hibernation
 
 After a successful real run, test hibernation with the following command:
@@ -69,6 +107,8 @@ After a successful real run, test hibernation with the following command:
 ```bash
 systemctl hibernate
 ```
+
+Or open the System menu in Omarchy and select Hibernate.
 
 ## Troubleshooting
 

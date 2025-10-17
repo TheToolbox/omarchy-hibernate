@@ -43,15 +43,28 @@ LOGIND_CONF="/etc/systemd/logind.conf"
 
 log "Configuring power button to trigger hibernation"
 
+# Check if already configured
+if grep -qE '^HandlePowerKey=hibernate' "$LOGIND_CONF"; then
+  log "Power button is already configured to hibernate"
+  log "No changes needed"
+  exit 0
+fi
+
 # Backup the file
 BACKUP="${LOGIND_CONF}.$(date +%Y%m%d%H%M%S).bak"
 cp -a "$LOGIND_CONF" "$BACKUP"
 log "Backed up $LOGIND_CONF to $BACKUP"
 
-# Change HandlePowerKey from ignore to hibernate
-sed -i 's/^HandlePowerKey=ignore/HandlePowerKey=hibernate/' "$LOGIND_CONF"
-
-log "Updated power button configuration"
+# Update or add HandlePowerKey setting
+if grep -qE '^HandlePowerKey=' "$LOGIND_CONF"; then
+  # Setting exists - update it
+  sed -i 's/^HandlePowerKey=.*/HandlePowerKey=hibernate/' "$LOGIND_CONF"
+  log "Updated existing HandlePowerKey setting to hibernate"
+else
+  # Setting doesn't exist - append it
+  echo "HandlePowerKey=hibernate" >> "$LOGIND_CONF"
+  log "Added HandlePowerKey=hibernate to logind.conf"
+fi
 
 # Reload systemd-logind configuration without killing sessions
 log "Reloading systemd-logind configuration"

@@ -4,7 +4,14 @@
 
 set -euo pipefail
 
-MENU_FILE="$HOME/.local/share/omarchy/bin/omarchy-menu"
+# Determine the actual user's home directory (handle sudo case)
+if [[ -n "${SUDO_USER:-}" ]]; then
+  USER_HOME=$(getent passwd "$SUDO_USER" | cut -d: -f6)
+else
+  USER_HOME="$HOME"
+fi
+
+MENU_FILE="$USER_HOME/.local/share/omarchy/bin/omarchy-menu"
 
 function fatal() {
   echo "FATAL: $*" >&2
