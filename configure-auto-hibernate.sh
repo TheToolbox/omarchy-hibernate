@@ -119,7 +119,27 @@ EOF
 
 log "Created $BATTERY_SERVICE"
 
-# === 3. Update hypridle to use suspend-then-hibernate ===
+# === 3. Configure lid switch to use suspend-then-hibernate ===
+log "Configuring lid switch to use suspend-then-hibernate"
+
+LOGIND_CONF_DIR="/etc/systemd/logind.conf.d"
+LOGIND_CONF="$LOGIND_CONF_DIR/10-lid-hibernate.conf"
+
+# Create directory if it doesn't exist
+mkdir -p "$LOGIND_CONF_DIR"
+
+# Create logind configuration
+cat > "$LOGIND_CONF" <<'EOF'
+# Use suspend-then-hibernate when lid is closed
+# This ensures the 30-minute hibernate delay triggers even when closing the lid
+[Login]
+HandleLidSwitch=suspend-then-hibernate
+HandleLidSwitchExternalPower=suspend-then-hibernate
+EOF
+
+log "Created $LOGIND_CONF"
+
+# === 4. Update hypridle to use suspend-then-hibernate ===
 log "Updating hypridle configuration to use suspend-then-hibernate"
 
 # Determine the actual user's home directory
@@ -162,7 +182,7 @@ EOF
   fi
 fi
 
-# === 4. Enable and start services ===
+# === 5. Enable and start services ===
 log "Enabling battery hibernate monitor service"
 systemctl daemon-reload
 systemctl enable battery-hibernate-monitor.service
@@ -173,10 +193,12 @@ log "Automatic hibernation configured successfully!"
 log ""
 log "Configuration:"
 log "  - Suspend-then-hibernate: After 30 minutes of sleep"
+log "  - Lid close behavior: suspend-then-hibernate (hibernate after 30min)"
 log "  - Low battery hibernate: When battery drops below 5%"
 log "  - Idle suspend: After 10 minutes of inactivity (then hibernate after 30min)"
 log ""
 log "To check battery monitor status: systemctl status battery-hibernate-monitor"
 log "To restart hypridle: omarchy-restart-hypridle"
 log ""
+log "Note: Logind changes take effect immediately for new lid close events."
 log "You may need to restart hypridle for idle changes to take effect."
