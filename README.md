@@ -6,8 +6,8 @@ This script automates the complete setup of hibernation on an Omarchy installati
 
 The script performs the following actions:
 
-- Creates a dedicated Btrfs subvolume at `/swap`.
-- Creates a swapfile within the subvolume, sized to match the system's total RAM.
+- Creates a dedicated Btrfs subvolume at `/swap` (if it doesn't exist).
+- Creates a hibernation swapfile (`/swap/hibernation_swapfile`) within the subvolume, sized to match the system's total RAM.
 - Adds a corresponding low-priority swap entry to `/etc/fstab`.
 - Ensures the `resume` hook is present in the `mkinitcpio` configuration.
 - **Calculates the swap file's physical offset and configures kernel resume parameters**.
@@ -44,7 +44,12 @@ If you are not using Btrfs, this script will fail during the filesystem check an
   ```
 
 - **Updating the swapfile:**
-  If you change the amount of RAM in your system, you will need to recreate the swapfile. You can do this with the `--update` flag:
+  If you change the amount of RAM in your system, simply re-run the script. It will detect the size mismatch and prompt you to recreate the swapfile:
+  ```bash
+  sudo ./hibernate.sh
+  ```
+
+  To skip the prompt and force recreation (useful for scripts):
   ```bash
   sudo ./hibernate.sh --update
   ```
@@ -58,9 +63,10 @@ If you are not using Btrfs, this script will fail during the filesystem check an
 
 ## Notes
 
-- The script will not run if `/swap` or `/swap/swapfile` already exist.
-- The script will abort if any non-zram swap is already active.
-- The script creates timestamped backups of `/etc/fstab` and the mkinitcpio hooks file before modifying them.
+- The script is **idempotent** - safe to run multiple times. If hibernation is already configured, it will verify and update the configuration as needed.
+- If a hibernation swapfile already exists but doesn't match your current RAM size, the script will prompt you to recreate it. Use `--update` to skip prompts.
+- The script will abort if any non-zram swap (other than the hibernation swapfile) is active.
+- The script creates timestamped backups of `/etc/fstab`, mkinitcpio hooks, and Limine configuration before modifying them.
 
 ## Post-Installation: Adding Hibernate to Menu
 
@@ -87,8 +93,11 @@ sudo ./configure-auto-hibernate.sh
 
 This configures:
 - **Suspend-then-hibernate**: After being suspended for 30 minutes, the system will hibernate
-- **Low battery hibernation**: When battery drops below 5%, the system will hibernate automatically
+- **Lid close behavior**: Closing the lid triggers suspend-then-hibernate (hibernate after 30min)
+- **Low battery hibernation**: When battery drops below 5%, the system will hibernate automatically (requires `upower`)
 - **Idle suspend**: After 10 minutes of inactivity, suspend (then hibernate after 30min)
+
+**Note**: This script is idempotent and safe to run multiple times. If you install `upower` after running the script, simply run it again to enable battery hibernation monitoring.
 
 ## Optional: Power Button Hibernation
 

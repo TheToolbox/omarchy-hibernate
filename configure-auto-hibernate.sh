@@ -43,12 +43,17 @@ log "Configuring hibernation on low battery (<5%)"
 BATTERY_SCRIPT="/usr/local/bin/battery-hibernate-monitor"
 BATTERY_SERVICE="/etc/systemd/system/battery-hibernate-monitor.service"
 
-# Auto-detect battery device
-log "Auto-detecting battery device"
-BATTERY_DEVICE=""
+# Check if upower is available
+if ! command -v upower >/dev/null 2>&1; then
+  log "Warning: upower not found. Skipping battery hibernation setup."
+  log "Install upower package if you want low battery hibernation."
+else
+  # Auto-detect battery device
+  log "Auto-detecting battery device"
+  BATTERY_DEVICE=""
 
-# Use upower to enumerate battery devices and find one with a valid native-path
-for bat in $(upower -e | grep battery); do
+  # Use upower to enumerate battery devices and find one with a valid native-path
+  for bat in $(upower -e | grep battery); do
   NATIVE_PATH=$(upower -i "$bat" 2>/dev/null | grep "native-path:" | awk '{print $2}')
   if [[ -n "$NATIVE_PATH" ]] && [[ "$NATIVE_PATH" != "(null)" ]]; then
     BATTERY_DEVICE="$bat"
@@ -57,15 +62,15 @@ for bat in $(upower -e | grep battery); do
   fi
 done
 
-if [[ -z "$BATTERY_DEVICE" ]]; then
-  log "Warning: No battery device found. Low battery hibernation will be disabled."
-  log "This is normal for desktop systems without a battery."
-  BATTERY_DEVICE="/org/freedesktop/UPower/devices/battery_BAT1"
-  log "Using fallback path (may be inactive): $BATTERY_DEVICE"
-fi
+  if [[ -z "$BATTERY_DEVICE" ]]; then
+    log "Warning: No battery device found. Low battery hibernation will be disabled."
+    log "This is normal for desktop systems without a battery."
+    BATTERY_DEVICE="/org/freedesktop/UPower/devices/battery_BAT1"
+    log "Using fallback path (may be inactive): $BATTERY_DEVICE"
+  fi
 
-# Create battery monitoring script with detected device
-cat > "$BATTERY_SCRIPT" <<EOF
+  # Create battery monitoring script with detected device
+  cat > "$BATTERY_SCRIPT" <<EOF
 #!/usr/bin/env bash
 # Monitor battery and hibernate when it drops below 5%
 
@@ -87,7 +92,8 @@ while true; do
   ON_AC=\$(upower -i "\$BATTERY_PATH" 2>/dev/null | grep -E "state:" | awk '{print \$2}')
 
   # Only hibernate if discharging and below threshold
-  if [[ "\$ON_AC" == "discharging" ]] && [[ -n "\$PERCENTAGE" ]] && (( \$(echo "\$PERCENTAGE < \$THRESHOLD" | bc -l) )); then
+  # Use bash arithmetic (convert percentage to integer for comparison)
+  if [[ "\$ON_AC" == "discharging" ]] && [[ -n "\$PERCENTAGE" ]] && (( \${PERCENTAGE%.*} < \$THRESHOLD )); then
     logger -t battery-hibernate "Battery at \${PERCENTAGE}%, hibernating now"
     systemctl hibernate
     exit 0
@@ -97,11 +103,11 @@ while true; do
 done
 EOF
 
-chmod +x "$BATTERY_SCRIPT"
-log "Created $BATTERY_SCRIPT"
+  chmod +x "$BATTERY_SCRIPT"
+  log "Created $BATTERY_SCRIPT"
 
-# Create systemd service
-cat > "$BATTERY_SERVICE" <<'EOF'
+  # Create systemd service
+  cat > "$BATTERY_SERVICE" <<'EOF'
 [Unit]
 Description=Battery Hibernate Monitor
 After=multi-user.target
@@ -117,7 +123,8 @@ RestartSec=10
 WantedBy=multi-user.target
 EOF
 
-log "Created $BATTERY_SERVICE"
+  log "Created $BATTERY_SERVICE"
+fi
 
 # === 3. Configure lid switch to use suspend-then-hibernate ===
 log "Configuring lid switch to use suspend-then-hibernate"
@@ -183,10 +190,16 @@ EOF
 fi
 
 # === 5. Enable and start services ===
-log "Enabling battery hibernate monitor service"
 systemctl daemon-reload
-systemctl enable battery-hibernate-monitor.service
-systemctl start battery-hibernate-monitor.service
+
+# Only enable battery monitor if upower is available
+if command -v upower >/dev/null 2>&1; then
+  log "Enabling battery hibernate monitor service"
+  systemctl enable battery-hibernate-monitor.service
+  # Start the service, but don't fail the script if it fails to start
+  # (it might fail on first run but work after reboot)
+  systemctl start battery-hibernate-monitor.service || log "Warning: Failed to start battery monitor (may need reboot)"
+fi
 
 log ""
 log "Automatic hibernation configured successfully!"
@@ -194,10 +207,14 @@ log ""
 log "Configuration:"
 log "  - Suspend-then-hibernate: After 30 minutes of sleep"
 log "  - Lid close behavior: suspend-then-hibernate (hibernate after 30min)"
-log "  - Low battery hibernate: When battery drops below 5%"
+if command -v upower >/dev/null 2>&1; then
+  log "  - Low battery hibernate: When battery drops below 5%"
+fi
 log "  - Idle suspend: After 10 minutes of inactivity (then hibernate after 30min)"
 log ""
-log "To check battery monitor status: systemctl status battery-hibernate-monitor"
+if command -v upower >/dev/null 2>&1; then
+  log "To check battery monitor status: systemctl status battery-hibernate-monitor"
+fi
 log "To restart hypridle: omarchy-restart-hypridle"
 log ""
 log "Note: Logind changes take effect immediately for new lid close events."

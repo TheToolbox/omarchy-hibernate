@@ -22,7 +22,7 @@ if [[ "${1:-}" == "--help" ]]; then
   echo "  - Updates Limine bootloader configuration"
   echo
   echo "Commands:"
-  echo "  --update   Recreate swapfile if RAM has changed"
+  echo "  --update   Skip prompts and force swapfile recreation (if needed)"
   echo "  --verify   Verify hibernation configuration is correct"
   echo "  --help     Show this help message"
   echo
@@ -40,7 +40,7 @@ elif [[ "${1:-}" == "--verify" ]]; then
 fi
 
 SUBVOL_PATH="/swap"
-SWAPFILE_PATH="$SUBVOL_PATH/swapfile"
+SWAPFILE_PATH="$SUBVOL_PATH/hibernation_swapfile"
 FSTAB_ENTRY="$SWAPFILE_PATH none swap defaults,pri=0 0 0"
 HOOKS_CONF_PATH="/etc/mkinitcpio.conf.d/omarchy_hooks.conf"
 LIMINE_DEFAULTS="/etc/default/limine"
@@ -103,9 +103,18 @@ if (( VERIFY_MODE == 1 )); then
     log "  Size: $(numfmt --to=iec "$SWAPFILE_SIZE")"
     log "  RAM:  $(numfmt --to=iec "$RAM_BYTES")"
 
-    if (( SWAPFILE_SIZE != RAM_BYTES )); then
-      log "  ⚠ Warning: Swapfile size doesn't match RAM size"
-      log "  Run with --update to fix"
+    # Swapfile must be >= RAM size, but we allow up to 1% over (MemTotal varies across boots)
+    TOLERANCE=$((RAM_BYTES / 100))
+
+    if (( SWAPFILE_SIZE < RAM_BYTES )); then
+      log "  ⚠ Warning: Swapfile is smaller than RAM"
+      log "  Shortfall: $(numfmt --to=iec $((RAM_BYTES - SWAPFILE_SIZE)))"
+      log "  Run with --update to recreate swapfile"
+      ((WARNINGS++))
+    elif (( SWAPFILE_SIZE > RAM_BYTES + TOLERANCE )); then
+      log "  ⚠ Warning: Swapfile is more than 1% larger than RAM"
+      log "  Excess: $(numfmt --to=iec $((SWAPFILE_SIZE - RAM_BYTES)))"
+      log "  Run with --update to recreate swapfile"
       ((WARNINGS++))
     fi
   else
@@ -360,24 +369,57 @@ if ! btrfs filesystem mkswapfile --help &>/dev/null; then
 fi
 log "Btrfs swapfile support: OK"
 
-if (( UPDATE_MODE == 1 )); then
-  log "Update mode enabled"
-  [[ -e "$SWAPFILE_PATH" ]] || fatal "$SWAPFILE_PATH does not exist. Cannot update."
+# Check if our hibernation swapfile already exists
+if [[ -e "$SWAPFILE_PATH" ]]; then
+  log "Hibernation swapfile already exists at $SWAPFILE_PATH"
 
   # get current swapfile size
   SWAPFILE_CURRENT_BYTES=$(stat -c%s "$SWAPFILE_PATH")
 
+  # Allow 1% tolerance - swapfile must be >= RAM but can be up to 1% over
+  TOLERANCE=$((RAM_BYTES / 100))
+
   NEED_SWAPFILE_UPDATE=0
-  if (( SWAPFILE_CURRENT_BYTES != RAM_BYTES )); then
-    log "Swapfile size ($(numfmt --to=iec "$SWAPFILE_CURRENT_BYTES")) does not match RAM size ($(numfmt --to=iec "$RAM_BYTES")). Will recreate."
-    NEED_SWAPFILE_UPDATE=1
+  if (( SWAPFILE_CURRENT_BYTES < RAM_BYTES )); then
+    # Swapfile is too small - definitely need to update
+    log "Swapfile size ($(numfmt --to=iec "$SWAPFILE_CURRENT_BYTES")) is smaller than RAM size ($(numfmt --to=iec "$RAM_BYTES"))."
+    log "Shortfall: $(numfmt --to=iec $((RAM_BYTES - SWAPFILE_CURRENT_BYTES)))"
+
+    if (( UPDATE_MODE == 1 )) || (( DRY_RUN_MODE == 1 )); then
+      log "Will recreate swapfile to match current RAM."
+      NEED_SWAPFILE_UPDATE=1
+    else
+      log "The hibernation swapfile needs to be recreated to match your current RAM size."
+      if prompt_yes_no "Recreate swapfile now? (This will temporarily disable swap)"; then
+        NEED_SWAPFILE_UPDATE=1
+      else
+        log "Keeping existing swapfile. Run with --update to force recreation later."
+      fi
+    fi
+  elif (( SWAPFILE_CURRENT_BYTES > RAM_BYTES + TOLERANCE )); then
+    # Swapfile is significantly larger - probably from old RAM config
+    log "Swapfile size ($(numfmt --to=iec "$SWAPFILE_CURRENT_BYTES")) is more than 1% larger than RAM ($(numfmt --to=iec "$RAM_BYTES"))."
+    log "Excess: $(numfmt --to=iec $((SWAPFILE_CURRENT_BYTES - RAM_BYTES)))"
+
+    if (( UPDATE_MODE == 1 )) || (( DRY_RUN_MODE == 1 )); then
+      log "Will recreate swapfile to match current RAM."
+      NEED_SWAPFILE_UPDATE=1
+    else
+      log "You can recreate the swapfile to match your current RAM size (optional)."
+      if prompt_yes_no "Recreate swapfile now? (This will temporarily disable swap)"; then
+        NEED_SWAPFILE_UPDATE=1
+      else
+        log "Keeping existing swapfile. It's larger than needed but will work fine."
+      fi
+    fi
   else
-    log "Swapfile size ($(numfmt --to=iec "$SWAPFILE_CURRENT_BYTES")) already matches RAM size."
+    # Size is within acceptable range
+    log "Swapfile size ($(numfmt --to=iec "$SWAPFILE_CURRENT_BYTES")) is appropriate for RAM ($(numfmt --to=iec "$RAM_BYTES"))."
   fi
 
   if (( NEED_SWAPFILE_UPDATE == 1 )); then
     log "Turning off swap"
-    maybe_exec swapoff "$SWAPFILE_PATH"
+    maybe_exec swapoff "$SWAPFILE_PATH" || true  # Don't fail if not active
 
     log "Removing old swapfile"
     maybe_exec rm "$SWAPFILE_PATH"
@@ -387,18 +429,22 @@ if (( UPDATE_MODE == 1 )); then
   fi
 
 else
-  # refuse to proceed if targets already exist
-  [[ ! -e "$SUBVOL_PATH" ]] || fatal "$SUBVOL_PATH already exists."
-  [[ ! -e "$SWAPFILE_PATH" ]] || fatal "$SWAPFILE_PATH already exists."
+  # Swapfile doesn't exist - create everything from scratch
+  log "Hibernation swapfile not found. Setting up from scratch."
 
-  # ensure no non-zram swap is currently active
-  if swapon --noheadings --raw --bytes | grep -v '^/dev/zram' | grep -q .; then
-    fatal "Detected active swap (non-zram)."
+  # Create /swap subvolume if it doesn't exist
+  if [[ ! -e "$SUBVOL_PATH" ]]; then
+    # ensure no non-zram swap is currently active
+    if swapon --noheadings --raw --bytes | grep -v '^/dev/zram' | grep -q .; then
+      fatal "Detected active swap (non-zram). Please disable it before setting up hibernation."
+    fi
+
+    # create dedicated Btrfs subvolume
+    log "Creating Btrfs subvolume at $SUBVOL_PATH"
+    maybe_exec btrfs subvolume create "$SUBVOL_PATH" || fatal "Could not create Btrfs subvolume $SUBVOL_PATH"
+  else
+    log "Subvolume $SUBVOL_PATH already exists, using it."
   fi
-
-  # create dedicated Btrfs subvolume
-  log "Creating Btrfs subvolume at $SUBVOL_PATH"
-  maybe_exec btrfs subvolume create "$SUBVOL_PATH" || fatal "Could not create Btrfs subvolume $SUBVOL_PATH"
 
   # create Btrfs-native swapfile sized to RAM
   log "Creating swapfile of size $(numfmt --to=iec "$RAM_BYTES")"
