@@ -4,15 +4,19 @@ This script automates the complete setup of hibernation on an Omarchy installati
 
 ## Overview
 
-The script performs the following actions:
+The script sets up complete hibernation support in one run:
 
-- Creates a dedicated Btrfs subvolume at `/swap` (if it doesn't exist).
-- Creates a hibernation swapfile (`/swap/hibernation_swapfile`) within the subvolume, sized to match the system's total RAM.
-- Adds a corresponding low-priority swap entry to `/etc/fstab`.
-- Ensures the `resume` hook is present in the `mkinitcpio` configuration.
-- **Calculates the swap file's physical offset and configures kernel resume parameters**.
-- **Updates `/etc/default/limine` with `resume` and `resume_offset` parameters**.
-- Refreshes the initramfs and bootloader configuration using `limine-update`.
+- Creates a dedicated Btrfs subvolume at `/swap` (if it doesn't exist)
+- Creates a hibernation swapfile (`/swap/hibernation_swapfile`) sized to match your RAM
+- Adds swap entry to `/etc/fstab` and ensures `resume` hook in mkinitcpio
+- Calculates swap file offset and configures kernel resume parameters
+- Updates `/etc/default/limine` with `resume` and `resume_offset` parameters
+- Refreshes initramfs and bootloader configuration
+
+Optional Features (prompted during configuration):
+- System menu integration (adds "Hibernate" option)
+- Automatic hibernation (suspend-then-hibernate after 30 min, lid-close behavior, low battery)
+- Power button hibernation
 
 ## ⚠️ **Important: Btrfs-Only Support**
 
@@ -22,14 +26,18 @@ If you are not using Btrfs, this script will fail during the filesystem check an
 
 ## Requirements
 
-- **System:** An Omarchy installation.
-- **Filesystem:** A Btrfs root filesystem.
+**Required:**
+- **System:** An Omarchy installation
+- **Filesystem:** Btrfs root filesystem
 - **Bootloader:** Limine bootloader installed and configured:
   - `/boot/EFI/limine/limine.conf` must be present
   - `/etc/default/limine` must be present for kernel cmdline configuration
-- **Systemd:** The `systemd-hibernate-resume-generator` must be available.
-- **mkinitcpio:** The `omarchy_hooks.conf` file must be present at `/etc/mkinitcpio.conf.d/omarchy_hooks.conf`.
-- **Tools:** `btrfs-progs` (with `filesystem mkswapfile`), `filefrag`, `sed`, `numfmt`, and `limine-update` must be installed.
+- **Systemd:** The `systemd-hibernate-resume-generator` must be available
+- **mkinitcpio:** The `omarchy_hooks.conf` file must be present at `/etc/mkinitcpio.conf.d/omarchy_hooks.conf`
+- **Tools:** `btrfs-progs` (with `filesystem mkswapfile`), `filefrag`, `sed`, `numfmt`, and `limine-update`
+
+**Optional (for automatic hibernation features):**
+- `upower` - Required for battery level monitoring and low-battery hibernation
 
 ## Usage
 
@@ -64,50 +72,8 @@ If you are not using Btrfs, this script will fail during the filesystem check an
 ## Notes
 
 - The script is **idempotent** - safe to run multiple times. If hibernation is already configured, it will verify and update the configuration as needed.
-- If a hibernation swapfile already exists but doesn't match your current RAM size, the script will prompt you to recreate it. Use `--update` to skip prompts.
-- The script will abort if any non-zram swap (other than the hibernation swapfile) is active.
 - The script creates timestamped backups of `/etc/fstab`, mkinitcpio hooks, and Limine configuration before modifying them.
-
-## Post-Installation: Adding Hibernate to Menu
-
-After running the main hibernation setup, you'll want to add a hibernate option to your Omarchy system menu:
-
-```bash
-./add-hibernate-to-menu.sh
-```
-
-This script:
-- Adds a "Hibernate" option to the Omarchy system menu
-- Places it after "Suspend" in the menu
-- Creates a backup of the menu file before making changes
-
-After running this, you can access hibernate from the System menu in Omarchy.
-
-## Optional: Automatic Hibernation
-
-To configure automatic hibernation triggers:
-
-```bash
-sudo ./configure-auto-hibernate.sh
-```
-
-This configures:
-- **Suspend-then-hibernate**: After being suspended for 30 minutes, the system will hibernate
-- **Lid close behavior**: Closing the lid triggers suspend-then-hibernate (hibernate after 30min)
-- **Low battery hibernation**: When battery drops below 5%, the system will hibernate automatically (requires `upower`)
-- **Idle suspend**: After 10 minutes of inactivity, suspend (then hibernate after 30min)
-
-**Note**: This script is idempotent and safe to run multiple times. If you install `upower` after running the script, simply run it again to enable battery hibernation monitoring.
-
-## Optional: Power Button Hibernation
-
-To configure the power button to trigger hibernation:
-
-```bash
-sudo ./configure-power-button-hibernate.sh
-```
-
-After running this, pressing the power button (briefly) will hibernate the system instead of being ignored.
+- During the setup, you'll be prompted for optional features (menu integration, automatic hibernation, power button). You can decline any of these and run the individual scripts later if needed.
 
 ## Testing Hibernation
 
